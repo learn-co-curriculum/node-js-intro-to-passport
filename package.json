@@ -23,9 +23,14 @@
   "author": "Ethan Miller",
   "license": "ISC",
   "dependencies": {
+    "bcrypt": "^0.8.6",
     "body-parser": "^1.15.1",
     "bookshelf": "^0.9.5",
+    "connect-flash": "^0.1.1",
+    "cookie-parser": "^1.4.2",
     "express": "^4.13.4",
+    "express-handlebars": "^3.0.0",
+    "express-session": "^1.13.0",
     "knex": "^0.10.0",
     "passport": "^0.3.2",
     "pg": "^4.5.5"
