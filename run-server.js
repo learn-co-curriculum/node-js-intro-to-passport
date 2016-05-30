@@ -1,2 +1,2 @@
-const blog = require('./blog_server');
+const blog = require('./app/index.js');
 blog.up();

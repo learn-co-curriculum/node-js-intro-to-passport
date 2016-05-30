@@ -1,57 +1,39 @@
-"use strict";
+const _ = require('lodash');
+const path = require('path');
+const bodyParser = require('body-parser');
+const express = require('express');
+const knex = require('knex');
+const handlebars = require('express-handlebars');
 
-const _            = require('lodash');
-const express      = require('express');
-const bodyParser   = require('body-parser');
-const config  = require('./knexfile.js');
+const ENV = process.env.NODE_ENV || 'development';
+const config = require('../knexfile');
+const db = knex(config[ENV]);
 
 // Initialize Express.
 const app = express();
 app.use(bodyParser.json());
+app.use(passport.initialize());
+
+// Configure handlebars templates.
+app.engine('handlebars', handlebars({
+  defaultLayout: 'main',
+  layoutsDir: path.join(__dirname, '/views/layouts')
+}));
+app.set('views', path.join(__dirname, '/views'));
+app.set('view engine', 'handlebars');
 
 // Configure & Initialize Bookshelf & Knex.
-console.log('Running in environment: ' + process.env.NODE_ENV);
-const knex = require('knex')(config[process.env.NODE_ENV]);
-const bookshelf = require('bookshelf')(knex);
+console.log(`Running in environment: ${ENV}`);
 
 // ***** Models ***** //
 
-const User = bookshelf.Model.extend({
-  tableName: 'users',
-  hasTimestamps: true,
-  posts: function() {
-    return this.hasMany(Posts, 'author');
-  },
-  comments: function() {
-    return this.hasMany(Comments);
-  },
-});
+const Comment = require('./models/comment');
+const Post = require('./models/post');
+const User = require('./models/user');
 
-const Posts = bookshelf.Model.extend({
-  tableName: 'posts',
-  hasTimestamps: true,
-  author: function() {
-    return this.belongsTo(User, 'author');
-  },
-  comments: function() {
-    return this.hasMany(Comments);
-  },
-});
 
-const Comments = bookshelf.Model.extend({
-  tableName: 'comments',
-  hasTimestamps: true,
-  user: function() {
-    return this.belongsTo(User);
-  },
-  post: function() {
-    return this.belongsTo(Posts);
-  },
-});
 
-exports.User = User;
-exports.Posts = Posts;
-exports.Comments = Comments;
+
 
 // ***** Server ***** //
 
@@ -86,7 +68,7 @@ app.post('/user', (req, res) => {
 });
 
 app.get('/posts', (req, res) => {
-  Posts
+  Post
     .collection()
     .fetch()
     .then((posts) => {
@@ -98,7 +80,7 @@ app.get('/posts', (req, res) => {
 });
 
 app.get('/post/:id', (req,res) => {
-  Posts
+  Post
     .forge({id: req.params.id})
     .fetch({withRelated: ['author', 'comments']})
     .then((post) => {
@@ -115,7 +97,7 @@ app.get('/post/:id', (req,res) => {
 app.post('/post', (req, res) => {
   if(_.isEmpty(req.body))
     return res.sendStatus(400);
-  Posts
+  Post
     .forge(req.body)
     .save()
     .then((post) => {
@@ -130,7 +112,7 @@ app.post('/post', (req, res) => {
 app.post('/comment', (req, res) => {
   if (_.isEmpty(req.body))
     return res.sendStatus(400);
-  Comments
+  Comment
     .forge(req.body)
     .save()
     .then((comment) => {
@@ -146,23 +128,21 @@ app.post('/comment', (req, res) => {
 
 const listen = (port) => {
   return new Promise((resolve, reject) => {
-    app.listen(port, () => {
-      resolve();
-    });
+    return resolve(app.listen(port));
   });
 };
 
 exports.up = (justBackend) => {
-  return knex.migrate.latest([process.env.NODE_ENV])
+  return db.migrate.latest([ENV])
     .then(() => {
-      return knex.migrate.currentVersion();
+      return db.migrate.currentVersion();
     })
     .then((val) => {
       console.log('Done running latest migration:', val);
       return listen(3000);
     })
-    .then(() => {
+    .then((server) => {
       console.log('Listening on port 3000...');
+      return server
     });
 };
-
