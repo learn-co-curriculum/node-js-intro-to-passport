@@ -1,2 +1,323 @@
 Introduction to Passport
 ========================
+
+## Overview
+
+In this lesson, we are going to learn how to use the popular Node library Passport.Js to implement user authentication on our blog.
+
+By the end of this lesson, you will be able to:
+* Explain the Passport authentication workflow.
+* Use bcrypt and Bookshelf to encrypt user passwords.
+* Impelement a Passport "strategy" for authenticating users by password.
+
+## What is Passport?
+
+User authentication, as you well know, is fundamental to almost every web application in existence. (This much we know for sure, right? I mean how long is your password list?)
+
+Now given the ubiquity of the need to impelement this user authentication as a feature of our web apps, it makes little sense that we would reimplement it from scratch each time.
+
+This is where Passport comes in. Passport is the most widely used tool for impelementing authentication in the Node ecosystem. 
+## Getting Things Going
+
+In order to use passport, we of course need to install the module. Do so now by running `npm passport --save`.
+
+Now we need to retrofit our blog server to use passport.For the pruposes of this code-along, we've imported the implementation of our blog from the "Intro to Bookshelf" lab with a bit of reorganization.
+
+You'll notice that instead of having the single file containing all our server code, we have instead a modularized setup that can be found in the `app` directory. This modular setup allows us to pull some of the configuration assocaited with the models into other files. 
+
+In addition to being a generally superior way of organizing an application -- that is frankly necessary in larger products -- this makes our server code, located in `./app/index.js` more minimal.
+
+Okay so let's get underway. Our first step is pretty easy. We just need to require passport, as well as a series of other modules that we'll be using, and then register its the passport middleware with our Express app.
+
+To do this first add the following require statement near the other require statements at the top of our `index.js` file:
+
+```
+const passport = require('passport');
+const session = require('express-session');
+const cookieParser = require('cookie-parser');
+const flash = require('connect-flash');
+```
+
+Then in the code section that configures our Express app we just need to update the section were we setup our express app to look like this:
+
+``` .
+const app = express();
+app.use(flash());
+app.use(bodyParser.urlencoded({extended: true}));
+app.use(bodyParser.json());
+app.use(session({'our secret string')}));
+app.use(cookieParser());
+app.use(passport.initialize()); // <-- Register the Passport middleware.
+```
+
+Great were done with the first step! This doesn't look like much, but we're actually leveraging the power of existing modules to do a whole lot in a very few lines. Here's what we've done:
+* Enable our app to maintain a session object on our requests (e.g. `req.session`)
+* Activate a parser that reads the session's cookie.
+* Register our passport middleware with the Express app.
+
+The last step, in particular, is key because it allows us to move on to the next and core step of this whole process: namely, defining a strategy!
+
+## Setting up the Local Strategy (Part 1): Modifying our Users Model
+
+What we'll be doing in the next two sections is setting up a method that will allow our users to login with a username and password. However, currently our User model doesn't support a user having a password, so we'll need to set that up. We are also going to want that password to be encyprted to keep things nice and secure.
+
+First let's handle the migration. On your command line, enter the command `knex migrate:make add_password_field`. This should generate a new migrations file in our `migrations` directory into which we can place the following code to add the column:
+
+```
+exports.up = function(knex, Promise) {
+  return knex.schema.table('users', (tbl) => {
+    tbl.string('password', 128);
+  });
+};
+
+exports.down = function(knex, Promise) {
+  return knex.schema.table('users', (tbl) => {
+    tbl.dropColumn('password');
+  });
+};
+```
+
+In order to run this migration we can either wait until we run our server at which point the server's up function will run all the latest migrations, or we can do it manually now by doing `knex migrate:latest`.
+
+Now we have a password field in our database, but we still need to link the change to our Bookshelf model definition for user. To do this open the `app/models/user.js` file. Our first step here is to install the bcrypt module that we will use to encrypt the password. Do that by installing it with `npm install bcrypt --save`, and then require it at the top of the file like so: 
+
+```
+const bcrypt = require('bcrypt');
+```
+
+Now, finally, modify the User model definition so that it looks like the following:
+
+```
+const User = bookshelf.Model.extend({
+  tableName: 'users',
+  initialize: function() {
+    this.on('creating', this.encryptPassword);
+  },
+  hasTimestamps: true,
+  posts: function() {
+    return this.hasMany(Posts, 'author');
+  },
+  comments: function() {
+    return this.hasMany(Comments);
+  },
+  encryptPassword:(model, attrs, options) => {
+    return new Promise((resolve, reject) => {
+      bcrypt.hash(model.attributes.password, 10, (err, hash) => {
+        if (err) return reject(err);
+        model.set('password', hash);
+        resolve(hash);
+      });
+    });
+  },
+  validatePassword: function(suppliedPassword) {
+    let self = this;
+    return new Promise(function(resolve, reject) {
+      const hash = self.attributes.password;
+      bcrypt.compare(suppliedPassword, hash, (err, res) => {
+        if (err) return reject(err);
+        return resolve(res);
+      });
+    });
+  }
+});
+```
+
+So what is going on in this code? The first thing we're doing is adding an "override" for the User model's default `initalize` method, and within that override we are setting an event listener on the event called "creating". In other words, when the model is "creating" a new user we want it to call the specified method: `this.encryptPassword`. 
+
+Now, `encryptPassword`, as you can see, is a method that we've defined on the User model. That function returns a Promise that encrypts the user's supplied password using the bcrypt module. The promise either resolves with the hashed value of the password, or rejects, providing the error supplied by bcrypt as the reason.
+
+To check that this is working, add a new user by posting the appopriate data (i.e. name, username, email, password) to the `/user` route using either curl or Postman. Once you've created the user, check your database's users table. You should see a hash value in the password field that looks something like this:
+
+```
+$2a$10$pLOHxDVtdYQgemM2yVN.bOMTvWeMfRTV1ORgIlPPD0X9PBYHmPkCK 
+```
+
+Great, we're done configuring our schema.
+
+## Setting up the Local Strategy (Part II): Defining our Strategy
+
+Now we are ready to implement our first Passport strategy! This is a big moment.
+
+But wait! What, you might ask, is a strategy? Perhaps it seems like a strange word to encounter in the context of programming? Perhaps, but in the context it actually fits well.
+
+One of the key features of Passport as an authenication framework is that it is modular and extensible, meaning that it provides a loose framework for programmers to define their own pathways of authenication. It is opinionated about the series of steps that are followed to perform an authentication, but it remains neutral about the specific logic of authentication that an application might use.
+
+Why is this necessary? Well, let's say that in addition to a default username/password login we want to make it possible for users to login through their facebook or google accounts. Each of these methods would represent a unique "Strategy".
+
+The primary effect of the Passport middleware that we registered with our express app above is that it allows us to define strategies. So let's do that!
+
+We'll begin with a basic username/password authentication strategy. In passport, this is called a "Local Strategy", and there's a module for it called [passport-local](https://github.com/jaredhanson/passport-local). Go ahead and install it using `npm install passport-local --save`.
+
+Once we've installed the module, we need to pull it into our server file with a require statement. We can put it right below where we required passport:
+
+```
+require LocalStrategy = require('passport-local').Strategy
+```
+
+We've already imported the local strategy middlware module, so all we really need to do at this point is open up `index.js` and somewhere below where our models are defined, define the specific validation logic that suits our application. This can be done like so:
+
+```
+passport.use(new LocalStrategy((username, password, done) => {
+  User
+    .forge({ username: username })
+    .fetch()
+    .then((usr) => {
+      if (!usr) {
+        return done(null, false);
+      }
+      usr.validatePassword(password).then((valid) => {
+        if (!valid) {
+          return done(null, false);
+        }
+        return done(null, usr);
+      });
+    })
+    .catch((err) => {
+      return done(err);
+    });
+}));
+```
+
+So now we've defined our local strategy. You may very well be wondering how all this fits together, and we'll get to that. But first let's examine what we are doing in our strategy.
+
+Our first step, as you can see, is to create a new Strategy object (`new LocalStrategy`) and then register that with passport via `passport.use()`. However, importantly, when we create the new strategy we pass into the constructor a callback, let's call it our validation function, that defines the *specific way that our application will handle validation.*
+
+This validation function is hugely important to how Passport works, as well as why Passport is such a good library.  Remember above, when we talked about how Passport is unopninated about how an application performs its validation. Well, in addition to being able to choose which strategies an application uses to validate a user, Passport is also unopinionated about what happens during validation within a given strategy! It simply expects a strategy to be defined and for the application itself to provide the validation logic. Pretty clever. 
+
+So what is our validation logic? Well, it's pretty straightforward it turns out. The callback we've supplied above takes the username and password, which the user will have supplied when they attempt to login, and then a callback that we've called done.  This callback is important because it is what we'll use to hand control to the next step in server's handling of the request. As we shall see, it has the following signature: `done(error, user[, msg])`.
+
+Inside the function we use our Bookshelf User model to try to fetch a user using the supplied username. Then, if the user is not found we call `done(null, false)` to indicate that there was no error (so `null` for the error argument), but no user was found (so `false` for the user argument). If a user was found, then we try to validate the password using the password validation function that we added to our User model. If the passowrd is invalid, we again call `done(null, false)`. Otherwise, we call `done(null, usr)`passing the usr that we've found to the next step in the process. Finally, if an error occurs we simply call `done(err)`.
+
+So now that that's done, we can finally setup our `/login` routes so that all this logic can actually be reached by a client.
+
+So what do we need? Well, first of all we'll need some sort of login form. For this, we are going to be using a templating engine called handlebars. This is all setup already, and we won't go through it now because there's a lesson for this later in this unit. For now just add the following route:
+
+```
+app.get('/login', (req, res) => {
+  res.render('login', { message: req.flash('error) });
+});
+```
+
+As you can see we are usin a function [`path.join()`](https://nodejs.org/api/path.html#path_path_join_path1_path2) here to formulate the path of our html file. It is a handle function that joins all the arguments together and produces a standardized (or "normalized") path string. To use it, we'll need to require it at the top of our file with a `const path = require('path');`.
+
+Now comes the crucial moment where we tie all this together! What we'll need, finally, is a validation endpoint (ie. a server route) where the form data on our login form can be sent to validate the user. Here's where our local strategy will come into play. To get this working we'll define a POST route for `/login` (it could also be called `/authorize` or what have you) that looks like this:
+
+```
+app.post('/login',
+  passport.authenticate('local', {
+    failureRedirect: '/login',
+    failureFlash: true
+  }),
+  function(req, res) {
+    res.redirect('/posts');
+  });
+
+``` 
+
+Wow, that's simple! But, take note, there's something unusual about the above route. Do you see it? That's it, it takes *two* callbacks after the route name definition. What's going on here is that we are using an alternate syntax for setting up route-specific middleware that is provided by Express. If you look at the [Express documentation for the `post()`](http://expressjs.com/en/4x/api.html#app.post.method), you'll see that it says: "You can provide multiple callback functions that behave just like middleware.... You can use this mechanism to impose pre-conditions on a route, then pass control to subsequent routes if there’s no reason to proceed with the current route."
+
+So, presuming that `authenticate` sucessfully validates, then and only then will our second callback run. And what is is this second callback? Well, that's simple it just contains the logic for what to do if the user is validated, and what we've decided to do is send the logged-in user to the `/posts` route.
+
+If, on the other hand, the validation fails, we've provided an option to `authenticate` that specifies a `failureRedirect`, which we've set to be the `/login` page. If they fail to login, the user will just end up back at the login form.
+
+We are now nearly done! The last piece here is to define two additional functions called `serializeUser` and `deserializelizeUser`. You can add these anywhere, but it makes sense to place them below our local strategy definition. Here they are:
+
+```
+passport.serializeUser(function(user, done) {
+  done(null, user.id);
+});
+
+passport.deserializeUser(function(user, done) {
+  User
+    .forge({id: user})
+    .fetch()
+    .then((usr) => {
+      done(null, usr);
+    })
+    .catch((err) => {
+      done(err);
+    });
+});
+```
+ 
+OOOOKAY, so that is it! We're actually done. But you are surely a little confused about how this all fits together, so let's trace the program flow that we've set up. It's important to do this with Passport because not all of its execution flow is immediately evident. But dont' worry, you'll get the hang of it! 
+
+Let's say that someone who is already a user on our system loads up the login form, enters their username and password, and hits submit. Here's what will happen:
+
+1. As a first step, our form submits the form data via POST to the `/login` route that we've just defined. Once this happens the `authentiate` method fires.
+2. Now, because we've specified the `local` strategy, the authenticate method will now trigger our local strategy, passing to the user's supplied username and password to the validation function that we supplied.
+3. Inside our validation function, then, we try to load the user and validate his or her password. When that function calls `done` control is then passed back to the authenticate method which behaves differently depending on the values passed.
+4. If there was a problem, our validation function calls `done(err)` and the authenticate method then redirect the user back to the `/login` page.
+4. Similarly, if the user is not found or the password is invalid, control will be passed back to the authenticate method with `done(null, false)`, indicating that validationfailed. Again, the user will be directed back to the `/login` page.
+5. If validation succeeds, however, we send the validated user object back with `done(null, usr)`, and because the user object was present `authentiate` now calls another key passport function `login()`, which passport has attached to the request (`req`) object.
+6. Now is where the mysterious `serializeUser` function that we defined comes into play. Ignore the horrible technical language here. The job of this funciton is simple. It has access to the user object that our validation function passed via the `done` call, and then it determines which information on the user object should be stored in our application's session. It returns this value by calling done.
+7. Once `serializeUser` calls the `done` method, passport then stores the value it passed on the session, by setting that value here: `req.session.passport.user`.
+8. Now, finally, the second request callback handler method that we defined on the `POST /login` route is called, redirecting the user to `/posts`.
+
+So that's the whole circuit. Now if you fire up your server and try to login a user you've added manually using either postman or curl, the login form should work as described. Keep in mind that since we've not built a front-end view for the posts page, you'll just get back a JSON array containing any posts.
+
+## Protecting Our Routes (No Pun Intended)
+ 
+Now that we've set up our local strategy, we have a way to log a user into the application. But we haven't yet required that a user be logged in in order to access any of our pages.
+
+To provide this, clear out your users session by restarting the server, and try to load the `/posts` page. You'll see that the `/posts` page loads just fine. But we dont' want that, do we? The whole point of implementing this authentication system is to be able to protect certain pages from the general public.
+
+So how do we do this? The first question to consider here is: what does being logged in actually mean in programmatic terms? What is different about our application state when a user is logged in? We were so busy getting things setup, we may no thave asked ourselves this key question.
+
+Well, the answer is fairly straightforward. If you go back to the execution flow that we traced out agove, you'll see that in step #7, which follows a sucessful authentication, the value retuned by our `serializeUser` function is stored on the session. More concretely, that value is set on `req.session.passport.user`. So here we have our answer: when using passport, a user is considered logged in when that `req.session.passport` value is set.
+
+Great! So just to test this out and help us see what's going on in our application, let's right a little piece of custom middleware to help us determine whether our user is logged in or not. Find the section for Express configureation near the top of `index.js` and add the following middleware:
+
+```
+app.use((req, res, done) => {
+  if (req.session && req.session.passport) {
+    console.log('user is logged in: ', req.session.passport);
+  }
+  else {
+    console.log('user not logged in');
+  }
+  done();
+});
+```
+
+Now, fire up you server, and try to load the `/posts` page. Now, as before, you should see the post page load, but in our command line console window we should see the output of our console.log in the middlware above, saying: "user not logged in." So this is all wrong! If the user is not logged in we shouldn't be able to see the page, right?
+
+So how can we accomplish this. Actually, it's remarkably easy now that our strategy is configured. All we need to do is write a simple function that follows the same logic as our custom middleware above and checks to see if the user is logged in. So let's add the following custom function next to our passport strategy:
+
+```
+const isAuthenticated = (req, res, done) => {
+  if (req.isAuthenticated()) {
+    return done();
+  }
+  res.redirect('/login');
+};
+```
+
+Now as a final step, we can add this to any route that we want to protect. We can do so using the same pattern of providing multiple callbacks that we used to run `passport.authenticate` on the `POST /login` route. 
+
+So if we want to rejigger the `/posts` route to be a protected route, we can simply add our custom method to the route, like so:
+
+```
+app.get('/posts', isAuthenticated, (req, res) => {
+  Post
+    .collection()
+    .fetch()
+    .then((posts) => {
+      res.send(posts);
+    })
+    .catch((error) => {
+      res.sendStatus(500);
+    });
+});
+```
+
+Now, if  we restart the server, and try to load the `/posts` route, we should be automatically redirected to our login page. And, if we now log the user in, we should then be sucessfully redirected to the posts page.
+
+Wonderful! Now we have a fully functional authentication system.
+
+
+
+
+
+
+
