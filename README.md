@@ -233,8 +233,10 @@ passport.deserializeUser(function(user, done) {
     });
 });
 ```
- 
-OOOOKAY, so that is it! Tired yet?
+
+## What Have We Done?
+
+OOOOKAY, so are we tired tired yet?
 
 ![](https://s3.amazonaws.com/ezmiller/public/flatiron-imgs/sweating.gif)
 
