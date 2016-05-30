@@ -1,4 +1,9 @@
 <html>
+{{#if message}}
+<div class="error">
+  <span style="color: red">{{message}}</span>
+</div>
+{{/if}}
 <form action="/login" method="post">
   <div>
       <label>Username:</label>

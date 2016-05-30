@@ -8,6 +8,7 @@ const knex = require('knex');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const handlebars = require('express-handlebars');
+const flash = require('connect-flash');
 
 const ENV = process.env.NODE_ENV || 'development';
 
@@ -19,6 +20,7 @@ const app = express();
 app.use(bodyParser.urlencoded({extended: false}));
 app.use(bodyParser.json());
 app.use(session({ secret: 'some secret' }));
+app.use(flash());
 app.use(cookieParser());
 app.use(passport.initialize());
 app.use(passport.session());
@@ -174,11 +176,14 @@ app.post('/comment', isAuthenticated, (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-  res.render('login');
+  res.render('login', { message: req.flash('error') });
 });
 
 app.post('/login',
-  passport.authenticate('local', { failureRedirect: '/login' }),
+  passport.authenticate('local', {
+    failureRedirect: '/login',
+    failureFlash: true
+  }),
   function(req, res) {
     res.redirect('/posts');
   });
