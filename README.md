@@ -234,7 +234,11 @@ passport.deserializeUser(function(user, done) {
 });
 ```
  
-OOOOKAY, so that is it! We're actually done. But you are surely a little confused about how this all fits together, so let's trace the program flow that we've set up. It's important to do this with Passport because not all of its execution flow is immediately evident. So much is hidden away in the middleware. But dont' worry, you'll get the hang of it!
+OOOOKAY, so that is it! Tired yet?
+
+![](https://s3.amazonaws.com/ezmiller/public/flatiron-imgs/sweating.gif)
+
+We're actually done. But you are surely a little confused about how this all fits together, so let's trace the program flow that we've set up. It's important to do this with Passport because not all of its execution flow is immediately evident. So much is hidden away in the middleware. But dont' worry, you'll get the hang of it!
 
 Let's say that someone who is already a user on our system loads up the login form, enters their username and password, and hits submit. Here's what will happen:
 
