@@ -7,6 +7,7 @@ const session = require('express-session');
 const knex = require('knex');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
+const handlebars = require('express-handlebars');
 
 const ENV = process.env.NODE_ENV || 'development';
 
@@ -21,6 +22,13 @@ app.use(session({ secret: 'some secret' }));
 app.use(cookieParser());
 app.use(passport.initialize());
 app.use(passport.session());
+
+app.engine('handlebars', handlebars({
+  defaultLayout: 'main',
+  layoutsDir: path.join(__dirname, '/views/layouts')
+}));
+app.set('views', path.join(__dirname, '/views'));
+app.set('view engine', 'handlebars');
 
 // Configure & Initialize Bookshelf & Knex.
 console.log(`Running in environment: ${ENV}`);
@@ -166,7 +174,7 @@ app.post('/comment', isAuthenticated, (req, res) => {
 });
 
 app.get('/login', (req, res) => {
-  res.sendFile(path.join(__dirname + '/../views/login.html'));
+  res.render('login');
 });
 
 app.post('/login',
