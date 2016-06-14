@@ -8,13 +8,13 @@ In this lesson, we are going to learn how to use the popular Node library Passpo
 By the end of this lesson, you will be able to:
 * Explain the Passport authentication workflow.
 * Use bcrypt and Bookshelf to encrypt user passwords.
-* Impelement a Passport "strategy" for authenticating users by password.
+* Implement a Passport "strategy" for authenticating users by password.
 
 ## What is Passport?
 
 User authentication, as you well know, is fundamental to almost every web application in existence. (This much we know for sure, right? I mean how long is your password list?)
 
-Now given the ubiquity of the need to impelement this user authentication as a feature of our web apps, it makes little sense that we would reimplement it from scratch each time.
+Now given the ubiquity of the need to impelement this user authentication as a feature of our web apps, it wouldn't make sense to implement it from scratch each time.
 
 This is where Passport comes in. Passport is the most widely used tool for impelementing authentication in the Node ecosystem. 
 ## Getting Things Going
@@ -140,7 +140,7 @@ Now we are ready to implement our first Passport strategy! This is a big moment.
 
 But wait! What, you might ask, is a strategy? Perhaps it seems like a strange word to encounter in the context of programming? Perhaps, but in the context it actually fits well.
 
-One of the key features of Passport as an authenication framework is that it is modular and extensible, meaning that it provides a loose framework for programmers to define their own pathways of authenication. It is opinionated about the series of steps that are followed to perform an authentication, but it remains neutral about the specific way that an application authenticates a user.
+One of the key features of Passport as an authenication framework is that it is modular and extensible, meaning that it provides a loose framework for programmers to define their own pathways of authentication. It is opinionated about the series of steps that are followed to perform an authentication, but it remains neutral about the specific way that an application authenticates a user.
 
 Why is this a good thing? Well, let's say that in addition to a default username/password login we want to make it possible for users to login through their facebook or google accounts. Each of these methods would represent a unique "Strategy".
 
